@@ -8,28 +8,25 @@ RSpec.describe LocationForm, type: :model do
 
   it "is not valid without an user" do
     location_form = LocationForm.new
-    res = location_form.submit(controller_params.merge(location: params))
-    expect(res).to be_falsey
+    expect(location_form.submit(controller_params.merge(location: params))).to be_falsey
     expect(location_form).to_not be_valid
   end
 
   it "is not valid unless the location is valid" do
     location_form = LocationForm.new
-    res = location_form.submit(
+    expect(location_form.submit(
       controller_params.merge(location: params.except(:name).merge(user_code: administrator.barcode))
-    )
-    expect(res).to be_falsey
+    )).to be_falsey
     expect(location_form).to_not be_valid
   end
 
   it "is valid creates a new location" do
     location_form = LocationForm.new
-    res = location_form.submit(
+    expect(location_form.submit(
       controller_params.merge(location: params.merge(user_code: administrator.barcode))
-    )
-    expect(res).to be_truthy
+    )).to be_truthy
     expect(location_form).to be_valid
-    expect(location_form.location).to be_persisted
+    expect(location_form.locations.first).to be_persisted
   end
 
   it "can be edited if exists" do
@@ -56,55 +53,40 @@ RSpec.describe LocationForm, type: :model do
 
   it "should create the correct type of location dependent on the attributes" do
     location_form = LocationForm.new
-    res = location_form.submit(
+    expect(location_form.submit(
       controller_params.merge(location: attributes_for(:unordered_location)
                                           .merge(user_code: administrator.barcode))
-    )
-    expect(res).to be_truthy
-    expect(location_form.location).to be_unordered
-    expect(location_form.location.coordinates).to be_empty
+    )).to be_truthy
+    expect(location_form.locations.first).to be_unordered
+    expect(location_form.locations.first.coordinates).to be_empty
 
     location_form = LocationForm.new
-    res = location_form.submit(
+    expect(location_form.submit(
       controller_params.merge(location: attributes_for(:ordered_location)
                                           .merge(user_code: administrator.barcode))
-    )
-    expect(res).to be_truthy
-    expect(location_form.location).to be_ordered
-    expect(location_form.location.coordinates.count).to eq(create(:ordered_location).coordinates.count)
+    )).to be_truthy
+    expect(location_form.locations.first).to be_ordered
+    expect(location_form.locations.first.coordinates.count).to eq(create(:ordered_location).coordinates.count)
   end
   
-  describe "multiple locations creation" do
-    it "should create multiple locations if start and end are not empty" do
+  describe "multiple locations" do
+    it "are created if start and end are not empty" do
       location_form = LocationForm.new
-      res = location_form.submit(
-        controller_params.merge(location: params.merge(start_from: "1",
-                                                       end_to: "4",
+      expect(location_form.submit(
+        controller_params.merge(location: params.merge(range_from: "1",
+                                                       range_to: "4",
                                                        user_code: administrator.barcode))
-      )
-      expect(res).to be_truthy
+      )).to be_truthy
       expect(location_form).to be_valid
     end
 
-    it "should not create multiple locations if start is greater than end" do
+    it "are not created if start is greater than end" do
       location_form = LocationForm.new
-      res = location_form.submit(
-        controller_params.merge(location: params.merge(start_from: "2",
-                                                       end_to: "1",
+      expect(location_form.submit(
+        controller_params.merge(location: params.merge(range_from: "2",
+                                                       range_to: "1",
                                                        user_code: administrator.barcode))
-      )
-      expect(res).to be_falsey
-      expect(location_form).to_not be_valid
-    end
-    
-    it "should not create multiple locations if start and end are equal" do
-      location_form = LocationForm.new
-      res = location_form.submit(
-        controller_params.merge(location: params.merge(start_from: "1",
-                                                       end_to: "1",
-                                                       user_code: administrator.barcode))
-      )
-      expect(res).to be_falsey
+      )).to be_falsey
       expect(location_form).to_not be_valid
     end
     

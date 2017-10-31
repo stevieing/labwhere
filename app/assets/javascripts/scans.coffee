@@ -10,4 +10,6 @@ $(document).ready ->
     -> $('ul', this).stop().slideDown(100),
     -> $('ul', this).stop().slideUp(100)
     )
+  $('#location_number_of_locations').on 'input', ->
+    $('#locations_range').text($('#location_number_of_locations').val())
   return

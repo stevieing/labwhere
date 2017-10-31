@@ -4,13 +4,27 @@ class LocationForm
 
   include ActiveModel::Model
   include ActiveModel::Serialization
+
+  CONTROLLER_ATTRIBUTES = [:controller, :action]
+  FORM_ATTRIBUTES = [:user_code, :range_from, :range_to, :reserve]
+  LOCATION_ATTRIBUTES = [:id, :name, :location_type_id, :parent_id, :container, :status, :rows, :columns]
   
-  validate :check_user, :check_location, :check_range, :only_same_team_can_release_location 
-  attr_reader :current_user, :controller, :action, :location, :start_from, :end_to
+  attr_writer :coordinateable, :reserve
+  attr_reader :user_code, :controller, :action, :location, :locations, :range_from, :range_to, :params
+  attr_accessor *CONTROLLER_ATTRIBUTES
+
+  alias_attribute :current_user, :user_code
+
   # delegate_missing_to :location # rails 5
   delegate :parent, :barcode, :parentage, :type, :coordinateable?, :reserved?, :reserved_by, to: :location
-  delegate :id, :created_at, :updated_at, :to_json, to: :location 
-  delegate :name, :location_type_id, :parent_id, :container, :status, :rows, :columns, to: :location
+  delegate :created_at, :updated_at, :to_json, to: :location 
+  delegate *LOCATION_ATTRIBUTES, to: :location
+
+  validate :check_user, :check_location, :check_locations, :check_range, :only_same_team_can_release_location
+
+  def self.permitted_attributes
+    LOCATION_ATTRIBUTES + FORM_ATTRIBUTES
+  end
 
   def initialize(location = nil)
     @location = location || Location.new
@@ -19,40 +33,37 @@ class LocationForm
   def submit(params)
     @params = params
     assign_attributes(params)
+    @locations = LocationAggregator.new(location: location, range_from: range_from, range_to: range_to, team: team)
     if valid?
-      locations = create_locations(params)
-      run_transaction do
-        locations.each do |new_location|
-          new_location.save
-        end
-      end
+      locations.save
+      @location = locations.first
     else
       false
     end
   end
 
-  def update(params)
-    @params = params
-    assign_attributes(params)
-    if valid?
-      run_transaction do
-        location.save
-      end
-    else
-      false
-    end
-  end
+
+  # def update(params)
+  #   @params = params
+  #   assign_attributes(params)
+  #   if valid?
+  #     run_transaction do
+  #       location.save
+  #     end
+  #   else
+  #     false
+  #   end
+  # end
 
   def destroy(params)
     @params = params
-    @current_user = User.find_by_code(params[:user_code])
-    # assign_attributes(params)
+    self.user_code = params[:user_code]
     return false unless valid?
     location.destroy
     if location.destroyed?
       true
     else
-      add_location_errors
+      add_errors(location)
       false
     end
   end
@@ -63,17 +74,19 @@ class LocationForm
 
   def check_location
     return if location.valid?
-    add_location_errors
+    add_errors(location)
+  end
+
+  def check_locations
+    return if locations.nil?
+    return if locations.valid?
+    add_errors(locations)
   end
 
   def check_range
-    if start_from.nil? and not end_to.nil? 
-      errors.add(:start_from, :blank, message: "must be present if End is present") 
-    elsif not start_from.nil? and end_to.nil?
-      errors.add(:end_to, :blank, message: "must be present if Start is present")
-    elsif pos_int?(start_from) and pos_int?(end_to) and start_from.to_i >= end_to.to_i
-      errors.add(:start_from, :invalid, message: "must be less than End")
-    end
+    return unless range_from.present? && range_to.present?
+    return unless range_from > range_to
+    errors.add(:range_from, :invalid, message: "must be less than End")
   end
 
   def self.model_name
@@ -81,7 +94,8 @@ class LocationForm
   end
 
   def reserve
-    @reserve ||= reserved?
+    return reserved? if @reserve.nil?
+    @reserve
   end
 
   def coordinateable
@@ -92,96 +106,186 @@ class LocationForm
     location.id?
   end
 
-  def model
-    @location
+  def user_code=(user_code)
+    @user_code = User.find_by_code(user_code)
+  end
+
+  def range_from=(range_from)
+    @range_from = (range_from || 1).to_i
+  end
+
+  def range_to=(range_to)
+    @range_to = (range_to || 1).to_i
+  end
+
+  def reserve=(reserve)
+    @reserve = ((reserve || "0") == "1")
+  end
+
+  def unreserved?
+    !reserve?
+  end
+
+  def reserve?
+    reserve
   end
 
   private
 
   def assign_attributes(params)
-    @current_user = User.find_by_code(params[:location][:user_code])
-    @controller = params[:controller]
-    @action = params[:action]
-    @start_from = params.fetch(:location, {}).fetch(:start_from, nil)
-    @end_to = params.fetch(:location, {}).fetch(:end_to, nil)
-    # puts "PARAMS", params.inspect
-    @location.assign_attributes(location_attrs(params))
-    transform_location
-    set_team
+    assign_form_attributes(flattened_params)
+    @location.assign_attributes(location_attributes)
+    # transform_location
+    # set_team
   end
 
-  def location_attrs(params)
-    params.fetch(:location, {}).except(:start_from, :end_to, :user_code, :reserve, :coordinateable)
-    ## This is more flexible but location's attributes :team_id and :parent_id
-    ## don't match parameters :team and :parent (check locations factory)
-    # attrs = location.attributes.keys.map {|s| s.to_sym}
-    # params.fetch(:location, {}).slice(*attrs)
+  def assign_form_attributes(params)
+    (FORM_ATTRIBUTES + CONTROLLER_ATTRIBUTES).each do |attribute|
+      self.send("#{attribute}=", params[attribute])
+    end
   end
 
-  def add_location_errors
-    location.errors.each do |key, value|
+  def add_errors(object)
+    object.errors.each do |key, value|
       errors.add key, value
     end
   end
 
-  def transform_location
-    @location = location.transform if location.new_record?
-  end
- 
-  def pos_int?(value)
-    if /\A\d+\Z/.match(value.to_s)
-      true
-    else
-      false
-    end
+  # def add_location_errors
+  #   location.errors.each do |key, value|
+  #     errors.add key, value
+  #   end
+  # end
+
+  # def transform_location
+  #   @location = location.transform if location.new_record?
+  # end
+
+  def team
+    reserve? ? current_user.team_id : nil
   end
 
-  def generate_names(prefix, start_from, end_to, &block)
-    if not start_from.nil? and not end_to.nil?
-      ("#{prefix} #{start_from}".."#{prefix} #{end_to}").each do |name|
-        yield name
-      end
-    else
-      yield prefix
-    end
+  # def generate_names(prefix, range_from, range_to, &block)
+  #   if not range_from.nil? and not range_to.nil?
+  #     ("#{prefix} #{range_from}".."#{prefix} #{range_to}").each do |name|
+  #       yield name
+  #     end
+  #   else
+  #     yield prefix
+  #   end
+  # end
+
+  # def create_locations(params)
+  #   locations = []
+  #   prefix = params[:location][:name]
+  #   generate_names(prefix, range_from, range_to) do |name|
+  #     @location = Location.new
+  #     location.assign_attributes(location_attributes.merge(name: name))
+  #     transform_location
+  #     set_team
+  #     locations.push location
+  #   end
+  #   locations
+  # end
+
+  def flattened_params
+    @flattened_params ||= params.except(:location).merge(params[:location])
   end
 
-  def create_locations(params)
-    locations = []
-    prefix = params[:location][:name]
-    generate_names(prefix, start_from, end_to) do |name|
-      params[:location][:name] = name
-      @location = Location.new
-      location.assign_attributes(location_attrs(params))
-      transform_location
-      set_team
-      locations.push location
-    end
-    locations
+  def location_attributes
+    @location_attributes ||= flattened_params.slice(*LOCATION_ATTRIBUTES)
   end
 
-  def run_transaction(&block)
-    begin
-      ActiveRecord::Base.transaction do
-        yield
-      end
-      true
-    rescue
-      false
-    end
-  end
+  # def run_transaction(&block)
+  #   begin
+  #     ActiveRecord::Base.transaction do
+  #       yield
+  #     end
+  #     true
+  #   rescue
+  #     false
+  #   end
+  # end
 
-  def set_team
-    @location.team_id = reserve_param? ? current_user.team_id : nil
-  end
+  # def set_team
+  #   @location.team_id = reserve? ? current_user.team_id : nil
+  # end
 
   def only_same_team_can_release_location
-    return unless @params.has_key? :location
-    LocationReleaseValidator.new(team_id: current_user.team_id).validate(self) if !reserve_param?
+    return unless params.has_key? :location
+    LocationReleaseValidator.new(team_id: current_user.team_id).validate(self) if unreserved?
   end
 
-  def reserve_param?
-    @params.fetch(:location).fetch(:reserve, "0") == "1"
+  class LocationAggregator
+    include ActiveModel::Model
+    include Enumerable
+
+    attr_accessor :location, :range_from, :range_to, :team
+    attr_reader :locations
+
+    validate :check_locations
+
+    def initialize(params = {})
+      super
+      location.team_id = team
+      @locations = create_locations
+    end
+
+    def multiple?
+      range_from != range_to
+    end
+
+    def save
+      return false unless valid?
+      begin
+        ActiveRecord::Base.transaction do
+          locations.each(&:save)
+        end
+        true
+      rescue
+        false
+      end
+    end
+
+    def each(&block)
+      locations.each(&block)
+    end
+
+    private
+
+    def create_locations
+      if multiple?
+        aggregate_locations
+      else
+        @location = transform_location(location)
+        [location]
+      end
+    end
+
+    def aggregate_locations
+      [].tap do |locations|
+        (range_from..range_to).each do |n|
+          new_location = location.dup
+          new_location.name = "#{location.name}#{n}"
+          locations << transform_location(new_location)
+        end
+      end
+    end
+
+    def transform_location(location)
+      return location unless location.new_record?
+      location.transform
+    end
+
+    def check_locations
+      locations.each do |location|
+        next if location.valid?
+        location.errors.each do |key, value|
+          errors.add key, value
+        end
+      end
+    end
+
   end
 
 end

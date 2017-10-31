@@ -1,8 +1,5 @@
 class Api::LocationsController < ApiController
 
-
-  before_action :permitted_params, only: [:create, :update]
-  
   def index
     render json: Location.by_root
   end
@@ -13,12 +10,12 @@ class Api::LocationsController < ApiController
 
   def create
     @location = LocationForm.new
-    process_location(@location.submit(permitted_params))
+    process_location(@location.submit(location_params))
   end
 
   def update
     @location = LocationForm.new(current_resource)
-    process_location(@location.update(permitted_params))
+    process_location(@location.submit(location_params))
   end
 
 private
@@ -35,14 +32,8 @@ private
     end
   end
 
-  def permitted_params
-    location_attrs =  Location.new.attributes.keys.map {|k| k.to_sym}
-    params.permit(location: [*location_attrs,
-                            :user_code,
-                            :start_from,
-                            :end_to,
-                            :reserve,
-                            :coordinateable])
+  def location_params
+    params.permit(location: LocationForm.permitted_attributes)
   end
 
 end
