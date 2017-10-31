@@ -42,19 +42,6 @@ class LocationForm
     end
   end
 
-
-  # def update(params)
-  #   @params = params
-  #   assign_attributes(params)
-  #   if valid?
-  #     run_transaction do
-  #       location.save
-  #     end
-  #   else
-  #     false
-  #   end
-  # end
-
   def destroy(params)
     @params = params
     self.user_code = params[:user_code]
@@ -135,8 +122,6 @@ class LocationForm
   def assign_attributes(params)
     assign_form_attributes(flattened_params)
     @location.assign_attributes(location_attributes)
-    # transform_location
-    # set_team
   end
 
   def assign_form_attributes(params)
@@ -151,42 +136,9 @@ class LocationForm
     end
   end
 
-  # def add_location_errors
-  #   location.errors.each do |key, value|
-  #     errors.add key, value
-  #   end
-  # end
-
-  # def transform_location
-  #   @location = location.transform if location.new_record?
-  # end
-
   def team
     reserve? ? current_user.team_id : nil
   end
-
-  # def generate_names(prefix, range_from, range_to, &block)
-  #   if not range_from.nil? and not range_to.nil?
-  #     ("#{prefix} #{range_from}".."#{prefix} #{range_to}").each do |name|
-  #       yield name
-  #     end
-  #   else
-  #     yield prefix
-  #   end
-  # end
-
-  # def create_locations(params)
-  #   locations = []
-  #   prefix = params[:location][:name]
-  #   generate_names(prefix, range_from, range_to) do |name|
-  #     @location = Location.new
-  #     location.assign_attributes(location_attributes.merge(name: name))
-  #     transform_location
-  #     set_team
-  #     locations.push location
-  #   end
-  #   locations
-  # end
 
   def flattened_params
     @flattened_params ||= params.except(:location).merge(params[:location])
@@ -195,21 +147,6 @@ class LocationForm
   def location_attributes
     @location_attributes ||= flattened_params.slice(*LOCATION_ATTRIBUTES)
   end
-
-  # def run_transaction(&block)
-  #   begin
-  #     ActiveRecord::Base.transaction do
-  #       yield
-  #     end
-  #     true
-  #   rescue
-  #     false
-  #   end
-  # end
-
-  # def set_team
-  #   @location.team_id = reserve? ? current_user.team_id : nil
-  # end
 
   def only_same_team_can_release_location
     return unless params.has_key? :location
