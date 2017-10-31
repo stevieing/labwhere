@@ -97,9 +97,9 @@ RSpec.describe LocationForm, type: :model do
       res = location_form.submit(
               controller_params.merge(location: params.merge(
                                                   name: "Test Location",
-                                                  start_from: "1",
-                                                  end_to: "3",
-                                                  parent: parent_location,
+                                                  range_from: "1",
+                                                  range_to: "3",
+                                                  parent_id: parent_location.id,
                                                   user_code: administrator.barcode))
       )
       expect(res).to be_falsey

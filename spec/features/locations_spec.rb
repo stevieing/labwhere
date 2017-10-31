@@ -95,7 +95,6 @@ RSpec.describe "Locations", type: :feature do
     location = build(:location)
     visit locations_path
     click_link "Add new location"
-    save_and_open_page
     expect {
       fill_in "User swipe card id/barcode", with: user.swipe_card_id
       fill_in "Name", with: location.name

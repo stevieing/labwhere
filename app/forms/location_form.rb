@@ -37,6 +37,7 @@ class LocationForm
     if valid?
       locations.save
       @location = locations.first
+      true
     else
       false
     end
@@ -176,7 +177,7 @@ class LocationForm
       return false unless valid?
       begin
         ActiveRecord::Base.transaction do
-          locations.each(&:save)
+          locations.each(&:save!)
         end
         true
       rescue
@@ -203,7 +204,7 @@ class LocationForm
       [].tap do |locations|
         (range_from..range_to).each do |n|
           new_location = location.dup
-          new_location.name = "#{location.name}#{n}"
+          new_location.name = "#{location.name} #{n}"
           locations << transform_location(new_location)
         end
       end
@@ -215,6 +216,7 @@ class LocationForm
     end
 
     def check_locations
+
       locations.each do |location|
         next if location.valid?
         location.errors.each do |key, value|
